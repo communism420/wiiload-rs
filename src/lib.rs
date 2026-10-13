@@ -176,20 +176,17 @@ pub async fn compress_then_send_async<
 ) -> Result<(), WiiloadError> {
     use futures::{AsyncSeekExt, AsyncWriteExt};
 
-    let mut tmp = async_compression::futures::write::ZlibEncoder::with_quality(
-        buffer,
+    let mut encoder = async_compression::futures::bufread::ZlibEncoder::with_quality(
+        futures::io::BufReader::new(body),
         async_compression::Level::Best,
     );
 
-    futures::io::copy(body, &mut tmp).await?;
-
-    let compressed_size = usize::try_from(tmp.total_out()).map_err(|_| WiiloadError::FileTooBig)?;
+    let compressed_size = usize::try_from(futures::io::copy(&mut encoder, buffer).await?)
+        .map_err(|_| WiiloadError::FileTooBig)?;
     let uncompressed_size =
-        usize::try_from(tmp.total_in()).map_err(|_| WiiloadError::FileTooBig)?;
+        usize::try_from(encoder.total_in()).map_err(|_| WiiloadError::FileTooBig)?;
 
-    tmp.flush().await?;
-    let buffer = tmp.into_inner();
-
+    buffer.flush().await?;
     buffer.seek(std::io::SeekFrom::Start(0)).await?;
 
     push_async(
@@ -201,3 +198,6 @@ pub async fn compress_then_send_async<
     )
     .await
 }
+
+#[cfg(test)]
+mod tests;
